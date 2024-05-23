@@ -1,18 +1,18 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount};
 use crate::errors::Errors;
-use crate::base_account::BaseAccount;
+use crate::delegate_proxy::DelegateProxy;
 
 pub mod errors;
-pub mod base_account;
+pub mod delegate_proxy;
 
 declare_id!("B122vRCxftMzwqMBWFpghXzjzAskGzn3nLnuFbdvdgo4");
 
 #[program]
-pub mod safe_transfer {
+pub mod delegate_proxy_program {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, transfer: Pubkey, deactivate: Pubkey) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, transfer_authority: Pubkey, deactivate_authority: Pubkey) -> Result<()> {
         if ctx.remaining_accounts.len() < 1 {
             return err!(Errors::EmptyWhiteList);
         }
@@ -21,34 +21,34 @@ pub mod safe_transfer {
             return err!(Errors::WhiteListTooLong);
         }
 
-        let mut whitelist: [Pubkey; 10] = Default::default();
+        let mut allowed_transfer_targets: [Pubkey; 10] = Default::default();
         for (i, elem) in ctx.remaining_accounts.iter().enumerate() {
-            whitelist[i] = elem.key();
+            allowed_transfer_targets[i] = elem.key();
         }
 
-        let base = &mut ctx.accounts.base_account;
-        base.active = true;
-        base.bump = ctx.bumps.base_account;
-        base.owner = ctx.accounts.owner.key();
-        base.transfer_authority = transfer;
-        base.deactivation_authority = deactivate;
-        base.whitelisted_targets = whitelist;
+        let proxy = &mut ctx.accounts.delegate_proxy;
+        proxy.active = true;
+        proxy.bump = ctx.bumps.delegate_proxy;
+        proxy.owner = ctx.accounts.owner.key();
+        proxy.transfer_authority = transfer_authority;
+        proxy.deactivate_authority = deactivate_authority;
+        proxy.allowed_transfer_targets = allowed_transfer_targets;
         
         Ok(())
     }
 
-    pub fn safe_transfer(ctx: Context<SafeTransfer>, amount: u64) -> Result<()> {
+    pub fn proxy_transfer(ctx: Context<ProxyTransfer>, amount: u64) -> Result<()> {
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_accounts = token::Transfer {
             from: ctx.accounts.from.to_account_info(),
             to: ctx.accounts.to.to_account_info(),
-            authority: ctx.accounts.base_account.to_account_info(),
+            authority: ctx.accounts.delegate_proxy.to_account_info(),
         };
 
         let seeds = &[&[
-            BaseAccount::BASE_ACCOUNT_SEED,
-            ctx.accounts.base_account.transfer_authority.as_ref(),
-            &[ctx.accounts.base_account.bump],
+            DelegateProxy::DELEGATE_PROXY_SEED,
+            ctx.accounts.delegate_proxy.transfer_authority.as_ref(),
+            &[ctx.accounts.delegate_proxy.bump],
         ] as &[&[u8]]];
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
         
@@ -56,15 +56,15 @@ pub mod safe_transfer {
     }
 
     pub fn deactivate(ctx: Context<Deactivate>) -> Result<()> {
-        let base = &mut ctx.accounts.base_account;
-        base.active = false;
+        let proxy = &mut ctx.accounts.delegate_proxy;
+        proxy.active = false;
 
         Ok(())
     }
 
     pub fn activate(ctx: Context<Activate>) -> Result<()> {
-        let base = &mut ctx.accounts.base_account;
-        base.active = true;
+        let proxy = &mut ctx.accounts.delegate_proxy;
+        proxy.active = true;
 
         Ok(())
     }
@@ -72,24 +72,24 @@ pub mod safe_transfer {
 }
 
 #[derive(Accounts)]
-#[instruction(transfer: Pubkey, deactivate: Pubkey)]
+#[instruction(transfer_authority: Pubkey, deactivate_authority: Pubkey)]
 pub struct Initialize<'info> {
     #[account(
         mut,
         signer, 
-        constraint = owner.key() != transfer && owner.key() != deactivate @ Errors::SameAccounts
+        constraint = owner.key() != transfer_authority && owner.key() != deactivate_authority @ Errors::SameAccounts
     )]
     owner: Signer<'info>,
 
     #[account(
         init, 
         payer = owner,  
-        space = BaseAccount::LEN,
-        seeds = [BaseAccount::BASE_ACCOUNT_SEED, transfer.key().as_ref()],
+        space = DelegateProxy::LEN,
+        seeds = [DelegateProxy::DELEGATE_PROXY_SEED, transfer_authority.key().as_ref()],
         bump,
-        constraint = transfer != deactivate @ Errors::SameAccounts
+        constraint = transfer_authority != deactivate_authority @ Errors::SameAccounts
     )]
-    base_account: Account<'info, BaseAccount>,
+    delegate_proxy: Account<'info, DelegateProxy>,
 
     rent: Sysvar<'info, Rent>,
     system_program: Program<'info, System>,
@@ -97,18 +97,18 @@ pub struct Initialize<'info> {
 
 
 #[derive(Accounts)]
-pub struct SafeTransfer<'info> {
+pub struct ProxyTransfer<'info> {
     #[account(signer)]
     transfer_authority: Signer<'info>,
 
     #[account(
-        seeds = [BaseAccount::BASE_ACCOUNT_SEED, transfer_authority.key().as_ref()],
-        bump = base_account.bump,
-        constraint = base_account.transfer_authority == transfer_authority.key() @ Errors::UnknownAccount,
-        constraint = base_account.whitelisted_targets.contains(&to.key()) @ Errors::UnknownAccount,
-        constraint = base_account.active == true @ Errors::DeactivatedAccount
+        seeds = [DelegateProxy::DELEGATE_PROXY_SEED, transfer_authority.key().as_ref()],
+        bump = delegate_proxy.bump,
+        constraint = delegate_proxy.transfer_authority == transfer_authority.key() @ Errors::UnknownAccount,
+        constraint = delegate_proxy.allowed_transfer_targets.contains(&to.key()) @ Errors::UnknownAccount,
+        constraint = delegate_proxy.active == true @ Errors::DeactivatedProxy
     )]
-    base_account: Account<'info, BaseAccount>,
+    delegate_proxy: Account<'info, DelegateProxy>,
 
     #[account(mut)]
     from: Account<'info, TokenAccount>,
@@ -126,8 +126,8 @@ pub struct SafeTransfer<'info> {
 pub struct Deactivate<'info> {
     #[account(
         signer,
-        constraint = base_account.deactivation_authority == signer.key() 
-            || base_account.owner == signer.key() @ Errors::WrongDeactivateAccount
+        constraint = delegate_proxy.deactivate_authority == signer.key() 
+            || delegate_proxy.owner == signer.key() @ Errors::WrongDeactivateAccount
     )]
     signer: Signer<'info>,
 
@@ -136,17 +136,17 @@ pub struct Deactivate<'info> {
 
     #[account(
         mut,
-        seeds = [BaseAccount::BASE_ACCOUNT_SEED, transfer_authority.key().as_ref()],
-        bump = base_account.bump
+        seeds = [DelegateProxy::DELEGATE_PROXY_SEED, transfer_authority.key().as_ref()],
+        bump = delegate_proxy.bump
     )]
-    base_account: Account<'info, BaseAccount>,
+    delegate_proxy: Account<'info, DelegateProxy>,
 }
 
 #[derive(Accounts)]
 pub struct Activate<'info> {
     #[account(
         signer,
-        constraint = base_account.owner == signer.key() @ Errors::WrongOwnerAccount
+        constraint = delegate_proxy.owner == signer.key() @ Errors::NotAllowedToActivate
     )]
     signer: Signer<'info>,
 
@@ -155,8 +155,8 @@ pub struct Activate<'info> {
 
     #[account(
         mut,
-        seeds = [BaseAccount::BASE_ACCOUNT_SEED, transfer_authority.key().as_ref()],
-        bump = base_account.bump
+        seeds = [DelegateProxy::DELEGATE_PROXY_SEED, transfer_authority.key().as_ref()],
+        bump = delegate_proxy.bump
     )]
-    base_account: Account<'info, BaseAccount>,
+    delegate_proxy: Account<'info, DelegateProxy>,
 }

@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor"
 import { Program } from "@coral-xyz/anchor"
-import { SafeTransfer } from "../target/types/safe_transfer"
+import { DelegateProxyProgram } from "../target/types/delegate_proxy_program"
 import * as splToken from "@solana/spl-token"
 import { SYSVAR_RENT_PUBKEY } from "@solana/web3.js"
 import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet"
@@ -10,23 +10,23 @@ chai.use(chaiAsPromised)
 const expect = chai.expect
 
 
-describe("safe_transfer", () => {
-  const provider =  anchor.AnchorProvider.env()
+describe("delegate_proxy", () => {
+  const provider = anchor.AnchorProvider.env()
   anchor.setProvider(provider)
 
-  const sender =  provider.wallet.publicKey
+  const sender = provider.wallet.publicKey
   const payer = (provider.wallet as NodeWallet).payer
 
-  const receiver =  anchor.web3.Keypair.generate()
+  const receiver = anchor.web3.Keypair.generate()
 
-  const program = anchor.workspace.SafeTransfer as Program<SafeTransfer>
+  const program = anchor.workspace.DelegateProxyProgram as Program<DelegateProxyProgram>
 
-  const baseTransferAuthority = anchor.web3.Keypair.generate()
-  const baseActivateAuthority = anchor.web3.Keypair.generate()
+  const transferAuthority = anchor.web3.Keypair.generate()
+  const activateAuthority = anchor.web3.Keypair.generate()
 
-  let [safeTransferBase] = anchor.web3.PublicKey.findProgramAddressSync([
-    anchor.utils.bytes.utf8.encode("base-account"),
-    baseTransferAuthority.publicKey.toBuffer()
+  let [delegateProxy] = anchor.web3.PublicKey.findProgramAddressSync([
+    anchor.utils.bytes.utf8.encode("delegate-proxy"),
+    transferAuthority.publicKey.toBuffer()
   ], program.programId)
 
   let senderTokenAccount: anchor.web3.PublicKey
@@ -35,7 +35,7 @@ describe("safe_transfer", () => {
 
   const skipPreflight = false
 
-  before(async() => {
+  before(async () => {
 
     console.log("Provider = ", provider.publicKey.toString())
     console.log("Receiver = ", receiver.publicKey.toString())
@@ -60,46 +60,46 @@ describe("safe_transfer", () => {
   })
 
   it("Should not allow to initialize with same deactivate and transfer authorities", async () => {
-    const initTx = program.methods.initialize(baseTransferAuthority.publicKey, baseTransferAuthority.publicKey).accounts({
+    const initTx = program.methods.initialize(transferAuthority.publicKey, transferAuthority.publicKey).accounts({
       owner: payer.publicKey,
-      baseAccount: safeTransferBase,
+      delegateProxy,
       rent: SYSVAR_RENT_PUBKEY,
       systemProgram: anchor.web3.SystemProgram.programId
     }).remainingAccounts([{
       pubkey: receiverTokenAccount,
       isSigner: false,
       isWritable: false
-    }]).signers([payer]).rpc({skipPreflight: skipPreflight})
+    }]).signers([payer]).rpc({ skipPreflight: skipPreflight })
 
     await expect(initTx).to.be.rejectedWith(anchor.AnchorError)
   })
 
   it("Should not allow to initialize with same deactivate and owner authorities", async () => {
-    const initTx = program.methods.initialize(baseTransferAuthority.publicKey, payer.publicKey).accounts({
+    const initTx = program.methods.initialize(transferAuthority.publicKey, payer.publicKey).accounts({
       owner: payer.publicKey,
-      baseAccount: safeTransferBase,
+      delegateProxy,
       rent: SYSVAR_RENT_PUBKEY,
       systemProgram: anchor.web3.SystemProgram.programId
     }).remainingAccounts([{
       pubkey: receiverTokenAccount,
       isSigner: false,
       isWritable: false
-    }]).signers([payer]).rpc({skipPreflight: skipPreflight})
+    }]).signers([payer]).rpc({ skipPreflight: skipPreflight })
 
     await expect(initTx).to.be.rejectedWith(anchor.AnchorError)
   })
 
-  it("Should initialize properly with correct data", async () => {
-    const initTx = await program.methods.initialize(baseTransferAuthority.publicKey, baseActivateAuthority.publicKey).accounts({
+  it("Should initialize properly with the correct data", async () => {
+    const initTx = await program.methods.initialize(transferAuthority.publicKey, activateAuthority.publicKey).accounts({
       owner: payer.publicKey,
-      baseAccount: safeTransferBase,
+      delegateProxy,
       rent: SYSVAR_RENT_PUBKEY,
       systemProgram: anchor.web3.SystemProgram.programId
     }).remainingAccounts([{
       pubkey: receiverTokenAccount,
       isSigner: false,
       isWritable: false
-    }]).signers([payer]).rpc({skipPreflight: skipPreflight})
+    }]).signers([payer]).rpc({ skipPreflight: skipPreflight })
     console.log("TX: init transaction signature", initTx)
   })
 
@@ -118,60 +118,60 @@ describe("safe_transfer", () => {
     await newMint.mintTo(newSenderTokenAccount, payer, [], 10_000_000_000)
     await newMint.approve(
       newSenderTokenAccount,
-      safeTransferBase,
+      delegateProxy,
       payer,
       [],
       10_000_000
     )
 
-    await expect(transfer(baseTransferAuthority, safeTransferBase, newSenderTokenAccount, receiverTokenAccount, 10_000))
+    await expect(transfer(transferAuthority, delegateProxy, newSenderTokenAccount, receiverTokenAccount, 10_000))
       .to.be.rejectedWith(anchor.AnchorError)
   })
 
   it("Should transfer some of approved amount with correct data", async () => {
     await mint.approve(
       senderTokenAccount,
-      safeTransferBase,
+      delegateProxy,
       payer,
       [],
       10_000_000
     )
 
-    await transfer(baseTransferAuthority, safeTransferBase, senderTokenAccount, receiverTokenAccount, 10_000)
+    await transfer(transferAuthority, delegateProxy, senderTokenAccount, receiverTokenAccount, 10_000)
   })
 
   it("Should not allow to transfer with wrong authority", async () => {
-    let wrong = baseActivateAuthority
-    await expect(transfer(wrong, safeTransferBase, senderTokenAccount, receiverTokenAccount, 10_000))
+    let wrong = activateAuthority
+    await expect(transfer(wrong, delegateProxy, senderTokenAccount, receiverTokenAccount, 10_000))
       .to.be.rejectedWith(anchor.AnchorError)
   })
 
-  it("Should not allow to transfer to targer that out of white list", async () => {
+  it("Should not allow to transfer to a disallowed target", async () => {
     let wrongTarget = senderTokenAccount
-    await expect(transfer(baseTransferAuthority, safeTransferBase, senderTokenAccount, wrongTarget, 10_000))
+    await expect(transfer(transferAuthority, delegateProxy, senderTokenAccount, wrongTarget, 10_000))
       .to.be.rejectedWith(anchor.AnchorError)
   })
 
   it("Should not allow to transfer if deactivated", async () => {
     const deactivateTx = await program.methods.deactivate()
-    .accounts({
-      signer: baseActivateAuthority.publicKey,
-      transferAuthority: baseTransferAuthority.publicKey,
-      baseAccount: safeTransferBase
-    }).signers([baseActivateAuthority]).rpc({skipPreflight: skipPreflight})
+      .accounts({
+        signer: activateAuthority.publicKey,
+        transferAuthority: transferAuthority.publicKey,
+        delegateProxy,
+      }).signers([activateAuthority]).rpc({ skipPreflight: skipPreflight })
     console.log("TX: deactivate transaction signature", deactivateTx)
 
-    await expect(transfer(baseTransferAuthority, safeTransferBase, senderTokenAccount, receiverTokenAccount, 10_000))
+    await expect(transfer(transferAuthority, delegateProxy, senderTokenAccount, receiverTokenAccount, 10_000))
       .to.be.rejectedWith(anchor.AnchorError)
   })
 
   it("Should not allow to activate with deactivation authority", async () => {
     const activateTx = program.methods.activate()
-    .accounts({
-      signer: baseActivateAuthority.publicKey,
-      transferAuthority: baseTransferAuthority.publicKey,
-      baseAccount: safeTransferBase
-    }).signers([baseActivateAuthority]).rpc({skipPreflight: skipPreflight})
+      .accounts({
+        signer: activateAuthority.publicKey,
+        transferAuthority: transferAuthority.publicKey,
+        delegateProxy,
+      }).signers([activateAuthority]).rpc({ skipPreflight: skipPreflight })
 
     await expect(activateTx).to.be.rejectedWith(anchor.AnchorError)
   })
@@ -179,34 +179,32 @@ describe("safe_transfer", () => {
   it("Should allow to transfer when activated", async () => {
     // activate back
     const activateTx = await program.methods.activate()
-    .accounts({
-      signer: payer.publicKey,
-      transferAuthority: baseTransferAuthority.publicKey,
-      baseAccount: safeTransferBase
-    }).signers([payer]).rpc({skipPreflight: skipPreflight})
+      .accounts({
+        signer: payer.publicKey,
+        transferAuthority: transferAuthority.publicKey,
+        delegateProxy,
+      }).signers([payer]).rpc({ skipPreflight: skipPreflight })
     console.log("TX: activate transaction signature", activateTx)
 
-    await transfer(baseTransferAuthority, safeTransferBase, senderTokenAccount, receiverTokenAccount, 10_000)
+    await transfer(transferAuthority, delegateProxy, senderTokenAccount, receiverTokenAccount, 10_000)
   })
 
 
   async function transfer(
-    baseTransferAuthority: anchor.web3.Keypair, 
-    safeTransferBase: anchor.web3.PublicKey, 
-    senderToken: anchor.web3.PublicKey, 
+    transferAuthority: anchor.web3.Keypair,
+    delegateProxy: anchor.web3.PublicKey,
+    senderToken: anchor.web3.PublicKey,
     receiverToken: anchor.web3.PublicKey,
     amount: number
   ) {
     const BNamount = new anchor.BN(amount)
-    const transfer = await program.methods.safeTransfer(BNamount)
+    const transfer = await program.methods.proxyTransfer(BNamount)
       .accounts({
-        transferAuthority: baseTransferAuthority.publicKey,
-        baseAccount: safeTransferBase,
+        transferAuthority: transferAuthority.publicKey,
+        delegateProxy,
         from: senderToken,
         to: receiverToken
-      }).signers([baseTransferAuthority]).rpc({skipPreflight: skipPreflight})
+      }).signers([transferAuthority]).rpc({ skipPreflight: skipPreflight })
     console.log("TX: transfer transaction signature", transfer)
   }
 });
-
-

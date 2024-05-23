@@ -1,5 +1,5 @@
 # solana-delegate-proxy
-Solana Program Implementing a Delegate Proxy With Whitelisted Targets
+Solana Program Implementing a Delegate Proxy with Transfer Target List
 
 solana --version
 solana-cli 1.18.8 (src:e2d34d37; feat:3469865029, client:SolanaLabs)

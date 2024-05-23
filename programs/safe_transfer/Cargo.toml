@@ -1,12 +1,12 @@
 [package]
-name = "safe_transfer"
+name = "delegate_proxy"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "Delegate Proxy with Transfer Target List"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "safe_transfer"
+name = "delegate_proxy"
 
 [features]
 default = []

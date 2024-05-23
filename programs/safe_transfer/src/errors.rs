@@ -4,20 +4,20 @@ use anchor_lang::error_code;
 pub enum Errors {
     #[msg("Wrong parameters")]
     WrongParameters,
-    #[msg("Whitelist is empty")]
+    #[msg("Allowed Target List is empty")]
     EmptyWhiteList,
-    #[msg("Whitelist too long")]
+    #[msg("Allowed Target List is too long")]
     WhiteListTooLong,
     #[msg("Unknown account")]
     UnknownAccount,
-    #[msg("To and from account mints are not same")]
+    #[msg("To and From account mints are not the same")]
     MintsMismatch,
-    #[msg("Account not active")]
-    DeactivatedAccount,
-    #[msg("Same accounts in configuration")]
+    #[msg("Proxy is deactivated")]
+    DeactivatedProxy,
+    #[msg("Transfer authority should be different from Deactivate authority")]
     SameAccounts,
-    #[msg("No permissions to deactivate")]
+    #[msg("Not allowed to deactivate")]
     WrongDeactivateAccount,
-    #[msg("Only owner can activate transfers")]
-    WrongOwnerAccount
+    #[msg("Not allowed to activate")]
+    NotAllowedToActivate
 }
