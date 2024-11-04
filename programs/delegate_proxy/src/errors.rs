@@ -5,9 +5,9 @@ pub enum Errors {
     #[msg("Wrong parameters")]
     WrongParameters,
     #[msg("Allowed Target List is empty")]
-    EmptyWhiteList,
+    EmptyAllowList,
     #[msg("Allowed Target List is too long")]
-    WhiteListTooLong,
+    AllowListTooLong,
     #[msg("Unknown account")]
     UnknownAccount,
     #[msg("To and From account mints are not the same")]

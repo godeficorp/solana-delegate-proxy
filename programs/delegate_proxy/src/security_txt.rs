@@ -7,7 +7,7 @@ security_txt! {
     name: "goDefi",
     project_url: "https://godefi.me",
     contacts: "email:corp@godefi.me",
-    policy: "TBD",
+    policy: "https://godefi.me/disclosure-policy.html",
 
     // Optional Fields
     preferred_languages: "en"
