@@ -56,6 +56,24 @@ pub mod delegate_proxy_program {
         token::transfer(cpi_ctx, amount)
     }
 
+    pub fn proxy_approve(ctx: Context<ProxyApprove>, amount: u64) -> Result<()> {
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_accounts = token::Approve {
+            to: ctx.accounts.token_account.to_account_info(),
+            delegate: ctx.accounts.delegate_proxy.to_account_info(),
+            authority: ctx.accounts.owner.to_account_info(),
+        };
+
+        let seeds = &[&[
+            DelegateProxy::DELEGATE_PROXY_SEED,
+            ctx.accounts.delegate_proxy.transfer_authority.as_ref(),
+            &[ctx.accounts.delegate_proxy.bump],
+        ] as &[&[u8]]];
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
+
+        token::approve(cpi_ctx, amount)
+    }
+
     pub fn deactivate(ctx: Context<Deactivate>) -> Result<()> {
         let proxy = &mut ctx.accounts.delegate_proxy;
         proxy.active = false;
@@ -96,6 +114,27 @@ pub struct Initialize<'info> {
     system_program: Program<'info, System>,
 }
 
+// as token approve but only allows to approve the delegate proxy
+#[derive(Accounts)]
+pub struct ProxyApprove<'info> {
+    #[account(signer)]
+    owner: Signer<'info>,
+
+    /// CHECK: service account used as part of seed
+    transfer_authority:  AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [DelegateProxy::DELEGATE_PROXY_SEED, transfer_authority.key().as_ref()],
+        bump = delegate_proxy.bump
+    )]
+    delegate_proxy: Account<'info, DelegateProxy>,
+
+    #[account(mut)]
+    token_account: Account<'info, TokenAccount>,
+
+    token_program: Program<'info, Token>,
+}
 
 #[derive(Accounts)]
 pub struct ProxyTransfer<'info> {
