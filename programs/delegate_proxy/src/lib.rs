@@ -15,11 +15,11 @@ pub mod delegate_proxy_program {
 
     pub fn initialize(ctx: Context<Initialize>, transfer_authority: Pubkey, deactivate_authority: Pubkey) -> Result<()> {
         if ctx.remaining_accounts.len() < 1 {
-            return err!(Errors::EmptyWhiteList);
+            return err!(Errors::EmptyAllowList);
         }
 
         if ctx.remaining_accounts.len() > 10 {
-            return err!(Errors::WhiteListTooLong);
+            return err!(Errors::AllowListTooLong);
         }
 
         let mut allowed_transfer_targets: [Pubkey; 10] = Default::default();
