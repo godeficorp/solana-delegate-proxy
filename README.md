@@ -46,14 +46,14 @@ The project was last built and tested using the following versions:
 
 ```
 solana --version
-solana-cli 1.18.8 (src:e2d34d37; feat:3469865029, client:SolanaLabs)
+solana-cli 1.18.17 (src:e2d34d37; feat:3469865029, client:SolanaLabs)
 
 rustc --version
-rustc 1.78.0 (9b00956e5 2024-04-29)
+rustc 1.82.0 (f6e511eec 2024-10-15)
+
+anchor --version
+anchor-cli 0.30.1
 
 node -v
 v21.4.0
-
-anchor --version
-anchor-cli 0.30.0
 ```
